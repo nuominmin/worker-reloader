@@ -39,7 +39,6 @@ func NewWorkerPool() WorkerManager {
 func (wp *WorkerPool) Start(name string, handle func(), interval time.Duration) {
 	if _, ok := wp.workers[name]; !ok {
 		wp.workers[name] = new(WorkerTask)
-		wp.workers[name].ctx, wp.workers[name].cancel = context.WithCancel(context.Background())
 	}
 
 	wp.workers[name].Start(handle, interval)
@@ -49,7 +48,6 @@ func (wp *WorkerPool) Start(name string, handle func(), interval time.Duration) 
 func (wp *WorkerPool) StartOnce(name string, handle func()) {
 	if _, ok := wp.workers[name]; !ok {
 		wp.workers[name] = new(WorkerTask)
-		wp.workers[name].ctx, wp.workers[name].cancel = context.WithCancel(context.Background())
 	}
 
 	wp.workers[name].StartOnce(handle)
