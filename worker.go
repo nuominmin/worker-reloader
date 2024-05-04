@@ -9,8 +9,8 @@ import (
 
 // WorkerManager defines the interface for managing worker tasks.
 type WorkerManager interface {
-	Start(name string, handle func(), interval time.Duration)
-	StartOnce(name string, handle func())
+	Start(name string, handle func(ctx context.Context), interval time.Duration)
+	StartOnce(name string, handle func(ctx context.Context))
 	Stop(name string)
 	StopAll()
 }
@@ -36,7 +36,7 @@ func NewWorkerPool() WorkerManager {
 }
 
 // Start initiates a worker task with the specified name, function, and interval. If a task with the same name exists, it restarts it.
-func (wp *WorkerPool) Start(name string, handle func(), interval time.Duration) {
+func (wp *WorkerPool) Start(name string, handle func(ctx context.Context), interval time.Duration) {
 	if _, ok := wp.workers[name]; !ok {
 		wp.workers[name] = new(WorkerTask)
 	}
@@ -45,7 +45,7 @@ func (wp *WorkerPool) Start(name string, handle func(), interval time.Duration) 
 }
 
 // StartOnce initiates a worker task that runs only once and then stops.
-func (wp *WorkerPool) StartOnce(name string, handle func()) {
+func (wp *WorkerPool) StartOnce(name string, handle func(ctx context.Context)) {
 	if _, ok := wp.workers[name]; !ok {
 		wp.workers[name] = new(WorkerTask)
 	}
@@ -68,7 +68,7 @@ func (wp *WorkerPool) StopAll() {
 }
 
 // Start begins a new work routine and cancels any existing one.
-func (wt *WorkerTask) Start(handle func(), interval time.Duration) {
+func (wt *WorkerTask) Start(handle func(ctx context.Context), interval time.Duration) {
 	wt.mutex.Lock()
 	defer wt.mutex.Unlock()
 
@@ -93,14 +93,14 @@ func (wt *WorkerTask) Start(handle func(), interval time.Duration) {
 				fmt.Println("Worker task stopped")
 				return
 			case <-ticker.C:
-				handle()
+				handle(wt.ctx)
 			}
 		}
 	}()
 }
 
 // StartOnce begins a new work routine that runs only once.
-func (wt *WorkerTask) StartOnce(handle func()) {
+func (wt *WorkerTask) StartOnce(handle func(ctx context.Context)) {
 	wt.mutex.Lock()
 	defer wt.mutex.Unlock()
 
@@ -113,7 +113,7 @@ func (wt *WorkerTask) StartOnce(handle func()) {
 	wt.wg.Add(1)
 	go func() {
 		defer wt.wg.Done()
-		handle() // Execute task once
+		handle(wt.ctx) // Execute task once
 	}()
 }
 
