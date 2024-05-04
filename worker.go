@@ -10,6 +10,7 @@ import (
 // WorkerManager defines the interface for managing worker tasks.
 type WorkerManager interface {
 	Start(name string, handle func(), interval time.Duration)
+	StartOnce(name string, handle func())
 	Stop(name string)
 	StopAll()
 }
@@ -42,6 +43,16 @@ func (wp *WorkerPool) Start(name string, handle func(), interval time.Duration) 
 	}
 
 	wp.workers[name].Start(handle, interval)
+}
+
+// StartOnce initiates a worker task that runs only once and then stops.
+func (wp *WorkerPool) StartOnce(name string, handle func()) {
+	if _, ok := wp.workers[name]; !ok {
+		wp.workers[name] = new(WorkerTask)
+		wp.workers[name].ctx, wp.workers[name].cancel = context.WithCancel(context.Background())
+	}
+
+	wp.workers[name].StartOnce(handle)
 }
 
 // Stop terminates the worker task specified by name.
@@ -87,6 +98,24 @@ func (wt *WorkerTask) Start(handle func(), interval time.Duration) {
 				handle()
 			}
 		}
+	}()
+}
+
+// StartOnce begins a new work routine that runs only once.
+func (wt *WorkerTask) StartOnce(handle func()) {
+	wt.mutex.Lock()
+	defer wt.mutex.Unlock()
+
+	if wt.cancel != nil {
+		wt.cancel()
+		wt.wg.Wait() // Wait for the existing routine to stop
+	}
+
+	wt.ctx, wt.cancel = context.WithCancel(context.Background())
+	wt.wg.Add(1)
+	go func() {
+		defer wt.wg.Done()
+		handle() // Execute task once
 	}()
 }
 
