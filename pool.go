@@ -13,6 +13,8 @@ type WorkerPoolManager interface {
 	StartOnceWithVersion(name string, version string, handle func(ctx context.Context) error)
 	Stop(name string)
 	StopAll()
+	WatchErrors(handler func(error))
+	WatchErrorsForName(name string, handler func(error))
 }
 
 // WorkerPool manages a collection of worker tasks.
@@ -71,5 +73,19 @@ func (wp *WorkerPool) Stop(name string) {
 func (wp *WorkerPool) StopAll() {
 	for _, worker := range wp.workers {
 		worker.Stop()
+	}
+}
+
+// WatchErrors applies a global error handler to all current and future workers in the pool.
+func (wp *WorkerPool) WatchErrors(handler func(error)) {
+	for _, worker := range wp.workers {
+		worker.WatchErrors(handler) // Apply error handler to each worker
+	}
+}
+
+// WatchErrorsForName applies an error handler to a specific worker task identified by its name.
+func (wp *WorkerPool) WatchErrorsForName(name string, handler func(error)) {
+	if worker, exists := wp.workers[name]; exists {
+		worker.WatchErrors(handler) // Apply error handler to the specific worker
 	}
 }
