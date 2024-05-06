@@ -148,7 +148,7 @@ func main() {
 	pool.StartOnceWithVersion("DeployTask", "v1.2", deployVersion) // 部署版本 v1.2
 	
 	// 错误监控和异常处理
-    pool.Start("RiskyTask",riskyOperation, 10*time.Minute) // 每10分钟执行一次
+    	pool.Start("RiskyTask",riskyOperation, 10*time.Minute) // 每10分钟执行一次
 	pool.WatchErrorsForName("RiskyTask",riskyOperationError)
 	
 	// 资源密集型任务的负载管理
