@@ -3,39 +3,68 @@ package workerreloader
 import (
 	"context"
 	"log"
+	"sync"
 	"time"
 )
 
-// WorkerManager defines the interface for managing worker tasks.
+// WorkerManager defines an interface for managing worker tasks.
+// It includes methods to start, stop tasks, and manage task versions.
 type WorkerManager interface {
-	Start(handle func(ctx context.Context) error, interval time.Duration) (errChan chan error)
-	StartOnce(handle func(ctx context.Context) error) (errChan chan error)
+	Start(handle func(ctx context.Context) error, interval time.Duration)
+	StartOnce(handle func(ctx context.Context) error)
+	GetVersion() string
 	Stop()
+	WatchErrors(handler func(error))
 }
 
+// WorkerTask represents a scheduled task with mechanisms to handle
+// task execution repeatedly or once based on the given context.
+type WorkerTask struct {
+	name    string
+	version string     // 用于存储任务的版本标识
+	errChan chan error // 存储错误通道
+	ctx     context.Context
+	cancel  context.CancelFunc
+	wg      sync.WaitGroup
+	mutex   sync.Mutex
+}
+
+// NewWorkerTask creates a new task instance with a specified name.
 func NewWorkerTask(name string) WorkerManager {
 	return &WorkerTask{
 		name: name,
 	}
 }
 
-// Start initiates a new work routine for the worker task, cancelling any existing one first.
-// It first executes the provided 'handle' function immediately and checks for errors. If an error is encountered,
-// it sends the error on the returned error channel and exits. If no errors, it continues to execute 'handle'
-// at the specified intervals until the context is cancelled.
+// NewVersionedWorkerTask creates a new task instance with a specified name and version.
+func NewVersionedWorkerTask(name, version string) WorkerManager {
+	return &WorkerTask{
+		name:    name,
+		version: version,
+	}
+}
+
+// Start initiates a work routine that executes a given handle function repeatedly at specified intervals.
+// Before beginning the interval execution, it performs a one-time immediate execution of the handle function.
+// If any error occurs during the initial execution or subsequent interval executions, it is sent on the errChan.
 //
-// This method is designed for tasks that need to be run repeatedly at a fixed interval but also require
-// immediate first-time execution upon start. The method handles task cancellation and ensures that any
-// running instance is properly stopped before starting a new one.
+// Important behaviors:
+//   - Cancels any previously running routine associated with this WorkerTask before starting a new one.
+//   - Creates a new context for the new work routine, ensuring fresh execution environment.
+//   - Checks if the context is already cancelled right after the initial execution of the handle,
+//     which helps in preventing unnecessary work if the task was cancelled during the initial call.
+//   - If the context is not cancelled, it sets up a ticker to execute the handle function repeatedly at the defined interval.
+//   - This method uses a mutex to ensure that no two routines can run concurrently for the same task,
+//     hence avoiding race conditions and potential data inconsistencies.
 //
-// The function uses a mutex to lock the WorkerTask to prevent concurrent execution issues and ensures that
-// any running instance is stopped, then sets up a new context and starts the new routine.
-func (wt *WorkerTask) Start(handle func(ctx context.Context) error, interval time.Duration) (errChan chan error) {
+// Parameters:
+// - handle: A function to execute which can return an error. This function is called repeatedly until the task is cancelled.
+// - interval: The time.Duration between each execution of the handle function.
+//
+// The method manages the worker task lifecycle, including stopping and cleaning up properly before starting a new routine.
+func (wt *WorkerTask) Start(handle func(ctx context.Context) error, interval time.Duration) {
 	wt.mutex.Lock()
 	defer wt.mutex.Unlock()
-
-	// 创建一个错误通道
-	errChan = make(chan error, 1) // Buffered channel, to ensure goroutine does not block if error is sent and not immediately received.
 
 	// Cancel any existing work routine.
 	if wt.cancel != nil {
@@ -46,15 +75,18 @@ func (wt *WorkerTask) Start(handle func(ctx context.Context) error, interval tim
 	// Create a new context for the new work routine
 	wt.ctx, wt.cancel = context.WithCancel(context.Background())
 
+	// Buffer size of 1 to prevent blocking when sending errors
+	wt.errChan = make(chan error, 1)
+
 	// Start the new work routine
 	wt.wg.Add(1)
 	go func() {
 		defer wt.wg.Done()
-		defer close(errChan)
+		defer close(wt.errChan)
 
 		// Execute the handle immediately before starting the interval
 		if err := handle(wt.ctx); err != nil {
-			errChan <- err
+			wt.errChan <- err
 			return
 		}
 
@@ -77,23 +109,19 @@ func (wt *WorkerTask) Start(handle func(ctx context.Context) error, interval tim
 				return
 			case <-ticker.C:
 				if err := handle(wt.ctx); err != nil {
-					errChan <- err
+					wt.errChan <- err
 					return
 				}
 			}
 		}
 	}()
 
-	return errChan
 }
 
-// StartOnce begins a new work routine that runs only once.
-func (wt *WorkerTask) StartOnce(handle func(ctx context.Context) error) (errChan chan error) {
+// StartOnce initiates a new work routine that runs only once.
+func (wt *WorkerTask) StartOnce(handle func(ctx context.Context) error) {
 	wt.mutex.Lock()
 	defer wt.mutex.Unlock()
-
-	// 创建一个错误通道
-	errChan = make(chan error, 1) // Buffered channel, to ensure goroutine does not block if error is sent and not immediately received.
 
 	if wt.cancel != nil {
 		wt.cancel()
@@ -102,24 +130,27 @@ func (wt *WorkerTask) StartOnce(handle func(ctx context.Context) error) (errChan
 	}
 
 	wt.ctx, wt.cancel = context.WithCancel(context.Background())
+
+	// Buffer size of 1 to prevent blocking when sending errors
+	wt.errChan = make(chan error, 1)
+
 	wt.wg.Add(1)
 	go func() {
 		defer wt.wg.Done()
-		defer close(errChan)
+		defer close(wt.errChan)
 
 		// Execute task once
 		if err := handle(wt.ctx); err != nil {
-			errChan <- err
+			wt.errChan <- err
 			return
 		}
 
 		log.Printf("One-time worker task completed successfully, name: %s\n", wt.name)
 	}()
 
-	return errChan
 }
 
-// Stop cancels the work routine.
+// Stop terminates the current work routine.
 func (wt *WorkerTask) Stop() {
 	wt.mutex.Lock()
 	defer wt.mutex.Unlock()
@@ -127,4 +158,26 @@ func (wt *WorkerTask) Stop() {
 		wt.cancel()
 		wt.wg.Wait() // Ensure the routine has stopped
 	}
+}
+
+// GetVersion returns the version of the current task.
+func (wt *WorkerTask) GetVersion() string {
+	return wt.version
+}
+
+// WatchErrors listens for errors from the task's errChan and handles them using the provided handler function.
+func (wt *WorkerTask) WatchErrors(handler func(error)) {
+	go func() {
+		for {
+			select {
+			case err, ok := <-wt.errChan:
+				if !ok {
+					return // errChan has been closed
+				}
+				handler(err) // Handle the received error
+			case <-wt.ctx.Done():
+				return // The task context has been cancelled, stop listening
+			}
+		}
+	}()
 }
