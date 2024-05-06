@@ -1,7 +1,7 @@
 # worker-reloader
 
 ## 概览
-`worker-reloader` 是一个 Go 语言包，用于在一个池中动态管理和重载工作任务。支持间隔执行和一次性执行任务，以及任务的版本管理。
+`worker-reloader` 是一个 Go 语言包，提供了对后台任务的动态管理和重载功能。它允许用户创建一个任务池，并对任务进行定期执行或一次性执行，同时支持版本管理和错误监控。
 
 ## 功能
 - 动态任务管理：启动和停止池中的任务。
@@ -20,20 +20,20 @@ pool := workerreloader.NewWorkerPool()
 
 // 启动定时任务
 pool.Start("task1", func(ctx context.Context) error {
-    // 任务逻辑
-    return nil
+// 任务逻辑
+return nil
 }, 10*time.Minute)
 
 // 启动一次性任务
 pool.StartOnce("task2", func(ctx context.Context) error {
-    // 任务逻辑
-    return nil
+// 任务逻辑
+return nil
 })
 
 // 带版本的一次性任务
 pool.StartOnceWithVersion("task3", "v1.0", func(ctx context.Context) error {
-    // 任务逻辑
-    return nil
+// 任务逻辑
+return nil
 })
 
 // 停止任务
@@ -137,20 +137,20 @@ func main() {
 
 	// 定期数据同步
 	pool.Start("DataSyncTask", syncData, 30*time.Minute) // 每30分钟同步一次
-	
+
 	// 健康检查和监控
 	pool.Start("HealthCheckTask", healthCheck, 5*time.Minute) // 每5分钟检查一次
-	
+
 	// 事件驱动的任务执行
 	pool.StartOnce("ProcessEventTask", processEvent) // 只执行一次
 
 	// 版本控制的任务部署
 	pool.StartOnceWithVersion("DeployTask", "v1.2", deployVersion) // 部署版本 v1.2
-	
+
 	// 错误监控和异常处理
-    	pool.Start("RiskyTask",riskyOperation, 10*time.Minute) // 每10分钟执行一次
+	pool.Start("RiskyTask",riskyOperation, 10*time.Minute) // 每10分钟执行一次
 	pool.WatchErrorsForName("RiskyTask",riskyOperationError)
-	
+
 	// 资源密集型任务的负载管理
 	var mutex sync.Mutex
 	pool.Start("IntensiveTask", func(ctx context.Context) error {
