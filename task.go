@@ -50,16 +50,17 @@ func NewVersionedWorkerTask(name, version string) WorkerManager {
 //
 // Important behaviors:
 //   - Cancels any previously running routine associated with this WorkerTask before starting a new one.
-//   - Creates a new context for the new work routine, ensuring fresh execution environment.
+//   - Creates a new context for the new work routine, ensuring a fresh execution environment.
 //   - Checks if the context is already cancelled right after the initial execution of the handle,
 //     which helps in preventing unnecessary work if the task was cancelled during the initial call.
-//   - If the context is not cancelled, it sets up a ticker to execute the handle function repeatedly at the defined interval.
+//   - If the context is not cancelled, it schedules the next execution to maintain the defined interval,
+//     considering the time taken by the handle function to ensure there is always a pause of at least the specified interval.
 //   - This method uses a mutex to ensure that no two routines can run concurrently for the same task,
 //     hence avoiding race conditions and potential data inconsistencies.
 //
 // Parameters:
 // - handle: A function to execute which can return an error. This function is called repeatedly until the task is cancelled.
-// - interval: The time.Duration between each execution of the handle function.
+// - interval: The time.Duration between each execution of the handle function, ensuring at least this much delay between finishes of one call and the start of the next.
 //
 // The method manages the worker task lifecycle, including stopping and cleaning up properly before starting a new routine.
 func (wt *WorkerTask) Start(handle func(ctx context.Context) error, interval time.Duration) {
@@ -84,34 +85,23 @@ func (wt *WorkerTask) Start(handle func(ctx context.Context) error, interval tim
 		defer wt.wg.Done()
 		defer close(wt.errChan)
 
-		// Execute the handle immediately before starting the interval
-		if err := handle(wt.ctx); err != nil {
-			wt.errChan <- err
-			return
-		}
-
-		// Check if the context is already cancelled after handle execution
-		select {
-		case <-wt.ctx.Done():
-			log.Printf("Worker task stopped after initial execution, name: %s\n", wt.name)
-			return
-		default:
-			// Continue if not cancelled
-		}
-
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-
 		for {
+			startTime := time.Now() // Record the start time of the handle execution
+
+			if err := handle(wt.ctx); err != nil {
+				wt.errChan <- err
+				return
+			}
+
+			// Calculate the next tick time by adding the interval to the start time
+			nextTickTime := startTime.Add(interval)
+
 			select {
 			case <-wt.ctx.Done():
 				log.Printf("Worker task stopped, name: %s\n", wt.name)
 				return
-			case <-ticker.C:
-				if err := handle(wt.ctx); err != nil {
-					wt.errChan <- err
-					return
-				}
+			case <-time.After(time.Until(nextTickTime)):
+				// Wait until the next tick time
 			}
 		}
 	}()
