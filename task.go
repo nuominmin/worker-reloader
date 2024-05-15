@@ -142,12 +142,14 @@ func (wt *WorkerTask) StartOnce(handle func(ctx context.Context) error) {
 
 // Stop terminates the current work routine.
 func (wt *WorkerTask) Stop() {
-	wt.mutex.Lock()
-	defer wt.mutex.Unlock()
-	if wt.cancel != nil {
-		wt.cancel()
-		wt.wg.Wait() // Ensure the routine has stopped
-	}
+	go func() {
+		wt.mutex.Lock()
+		defer wt.mutex.Unlock()
+		if wt.cancel != nil {
+			wt.cancel()
+			wt.wg.Wait() // Ensure the routine has stopped
+		}
+	}()
 }
 
 // GetVersion returns the version of the current task.
