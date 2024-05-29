@@ -15,6 +15,7 @@ type WorkerPoolManager interface {
 	StopAll()
 	WatchErrors(handler func(error))
 	WatchErrorsForName(name string, handler func(error))
+	IsRunning(name string) bool
 }
 
 // WorkerPool manages a collection of worker tasks.
@@ -88,4 +89,12 @@ func (wp *WorkerPool) WatchErrorsForName(name string, handler func(error)) {
 	if worker, exists := wp.workers[name]; exists {
 		worker.WatchErrors(handler) // Apply error handler to the specific worker
 	}
+}
+
+// IsRunning checks if the worker task with the given name is currently running.
+func (wp *WorkerPool) IsRunning(name string) bool {
+	if worker, exists := wp.workers[name]; exists {
+		return worker.IsRunning()
+	}
+	return false
 }

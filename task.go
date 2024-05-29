@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -15,6 +16,7 @@ type WorkerManager interface {
 	GetVersion() string
 	Stop()
 	WatchErrors(handler func(error))
+	IsRunning() bool
 }
 
 // WorkerTask represents a scheduled task with mechanisms to handle
@@ -27,6 +29,7 @@ type WorkerTask struct {
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
 	mutex   sync.Mutex
+	running int32 // It is used to track whether a task is running
 }
 
 // NewWorkerTask creates a new task instance with a specified name.
@@ -42,6 +45,11 @@ func NewVersionedWorkerTask(name, version string) WorkerManager {
 		name:    name,
 		version: version,
 	}
+}
+
+// IsRunning returns whether the task is currently running.
+func (wt *WorkerTask) IsRunning() bool {
+	return atomic.LoadInt32(&wt.running) == 1
 }
 
 // Start initiates a work routine that executes a given handle function repeatedly at specified intervals.
@@ -78,12 +86,14 @@ func (wt *WorkerTask) Start(handle func(ctx context.Context) error, interval tim
 
 	// Buffer size of 1 to prevent blocking when sending errors
 	wt.errChan = make(chan error, 1)
+	atomic.StoreInt32(&wt.running, 1) // Set the task to the running state
 
 	// Start the new work routine
 	wt.wg.Add(1)
 	go func() {
 		defer wt.wg.Done()
 		defer close(wt.errChan)
+		defer atomic.StoreInt32(&wt.running, 0)
 
 		for {
 			startTime := time.Now() // Record the start time of the handle execution
@@ -123,11 +133,13 @@ func (wt *WorkerTask) StartOnce(handle func(ctx context.Context) error) {
 
 	// Buffer size of 1 to prevent blocking when sending errors
 	wt.errChan = make(chan error, 1)
+	atomic.StoreInt32(&wt.running, 1) // Set the task to the running state
 
 	wt.wg.Add(1)
 	go func() {
 		defer wt.wg.Done()
 		defer close(wt.errChan)
+		defer atomic.StoreInt32(&wt.running, 0)
 
 		// Execute task once
 		if err := handle(wt.ctx); err != nil {
