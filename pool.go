@@ -54,8 +54,10 @@ func (wp *WorkerPool) StartOnce(name string, handle func(ctx context.Context) er
 // If a task with the same name but a different version exists, it restarts it.
 // If the task does not exist or the version is different, it creates and starts a new task.
 func (wp *WorkerPool) StartOnceWithVersion(name string, version string, handle func(ctx context.Context) error) {
-	if _, exists := wp.workers[name]; exists {
-		return
+	if worker, exists := wp.workers[name]; exists {
+		if worker.GetVersion() == version {
+			return
+		}
 	}
 	wp.workers[name] = NewVersionedWorkerTask(name, version)
 	wp.workers[name].StartOnce(handle)
