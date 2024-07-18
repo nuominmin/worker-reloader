@@ -99,7 +99,10 @@ func (wt *WorkerTask) Start(handle func(ctx context.Context) error, interval tim
 			startTime := time.Now() // Record the start time of the handle execution
 
 			if err := handle(wt.ctx); err != nil {
-				wt.errChan <- err
+				select {
+				case wt.errChan <- err:
+				default:
+				}
 			}
 
 			// Calculate the next tick time by adding the interval to the start time
@@ -142,7 +145,10 @@ func (wt *WorkerTask) StartOnce(handle func(ctx context.Context) error) {
 
 		// Execute task once
 		if err := handle(wt.ctx); err != nil {
-			wt.errChan <- err
+			select {
+			case wt.errChan <- err:
+			default:
+			}
 		}
 
 		log.Printf("One-time worker task completed successfully, name: %s\n", wt.name)
