@@ -23,13 +23,25 @@ type WorkerPoolManager interface {
 type WorkerPool struct {
 	workers map[string]WorkerManager
 	mu      sync.Mutex
+	ctx     context.Context
+	cancel  context.CancelFunc
+	once    sync.Once
 }
 
 // NewWorkerPool creates a new instance of WorkerPool.
-func NewWorkerPool() WorkerPoolManager {
-	return &WorkerPool{
+func NewWorkerPool(ctx context.Context) WorkerPoolManager {
+	wp := &WorkerPool{
 		workers: make(map[string]WorkerManager),
 	}
+
+	wp.ctx, wp.cancel = context.WithCancel(ctx)
+
+	go func() {
+		<-wp.ctx.Done()
+		wp.stopAll()
+	}()
+
+	return wp
 }
 
 // getWorker safely retrieves a worker with the specified name.
@@ -93,9 +105,14 @@ func (wp *WorkerPool) Stop(name string) {
 	}
 }
 
-// StopAll terminates all currently managed worker tasks.
-// This method will block until all tasks have been properly shut down.
+// StopAll cancels the context.
 func (wp *WorkerPool) StopAll() {
+	wp.cancel()
+}
+
+// stopAll terminates all currently managed worker tasks.
+// This method will block until all tasks have been properly shut down.
+func (wp *WorkerPool) stopAll() {
 	wp.mu.Lock()
 	defer wp.mu.Unlock()
 
