@@ -31,9 +31,7 @@ type WorkerPool struct {
 
 // NewWorkerPool Creates a new instance of WorkerPool.
 func NewWorkerPool() WorkerPoolManager {
-	return &WorkerPool{
-		workers: make(map[string]WorkerManager),
-	}
+	return NewWorkerPoolWithContext(context.Background())
 }
 
 // NewWorkerPoolWithContext Creates a new instance of WorkerPool with context.
