@@ -54,3 +54,18 @@ func TestWorkerPool_StopAllOnContextCancel(t *testing.T) {
 
 	time.Sleep(time.Duration(50) * time.Second)
 }
+
+// TestWorkerTask_StartOnceWithDelay tests that the task runs after the specified delay.
+func TestWorkerTask_StartOnceWithDelay(t *testing.T) {
+	fmt.Println(time.Now())
+	w := NewVersionedWorkerTask("testWorker", "v1.0.0")
+	w.StartOnceWithDelay(func(ctx context.Context) error {
+		fmt.Println("testWorker start")
+		fmt.Println(time.Now())
+		return nil
+	}, 60*time.Second)
+
+	w.ExtendStartOnceWithDelay(1 * time.Second)
+
+	time.Sleep(1000 * time.Second)
+}

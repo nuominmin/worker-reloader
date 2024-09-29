@@ -13,6 +13,8 @@ import (
 type WorkerManager interface {
 	Start(handle func(ctx context.Context) error, interval time.Duration)
 	StartOnce(handle func(ctx context.Context) error)
+	StartOnceWithDelay(handle func(ctx context.Context) error, delay time.Duration)
+	ExtendStartOnceWithDelay(delay time.Duration)
 	GetVersion() string
 	Stop()
 	WatchErrors(handler func(error))
@@ -22,14 +24,16 @@ type WorkerManager interface {
 // WorkerTask represents a scheduled task with mechanisms to handle
 // task execution repeatedly or once based on the given context.
 type WorkerTask struct {
-	name    string
-	version string     // 用于存储任务的版本标识
-	errChan chan error // 存储错误通道
-	ctx     context.Context
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
-	mutex   sync.Mutex
-	running int32 // It is used to track whether a task is running
+	name     string
+	version  string     // The version identifier used to store the task
+	errChan  chan error // Memory error channel
+	ctx      context.Context
+	cancel   context.CancelFunc
+	wg       sync.WaitGroup
+	mutex    sync.Mutex
+	running  int32         // It is used to track whether a task is running
+	timer    *time.Timer   // Timer that delays task execution
+	delayDur time.Duration // Records the delay time for the renewal function
 }
 
 // NewWorkerTask creates a new task instance with a specified name.
@@ -154,6 +158,38 @@ func (wt *WorkerTask) StartOnce(handle func(ctx context.Context) error) {
 		log.Printf("One-time worker task completed successfully, name: %s\n", wt.name)
 	}()
 
+}
+
+// StartOnceWithDelay initiates a new work routine that runs only once, but after a specified delay.
+// This method now reuses StartOnce to execute the task after the delay.
+func (wt *WorkerTask) StartOnceWithDelay(handle func(ctx context.Context) error, delay time.Duration) {
+	wt.mutex.Lock()
+	defer wt.mutex.Unlock()
+
+	if wt.cancel != nil {
+		wt.cancel()
+		wt.wg.Wait()
+	}
+
+	wt.delayDur = delay
+	wt.timer = time.AfterFunc(delay, func() {
+		// Once the delay is over, simply call StartOnce to run the task.
+		wt.StartOnce(handle)
+	})
+}
+
+// ExtendStartOnceWithDelay extends the delay of a task before it starts.
+// This method cancels the current timer and restarts it with a new delay.
+func (wt *WorkerTask) ExtendStartOnceWithDelay(delay time.Duration) {
+	wt.mutex.Lock()
+	defer wt.mutex.Unlock()
+
+	// 如果定时器存在且任务还未运行，则取消定时器并重新设置
+	if wt.timer != nil && atomic.LoadInt32(&wt.running) == 0 {
+		wt.timer.Stop()
+		wt.timer.Reset(delay)
+		wt.delayDur = delay
+	}
 }
 
 // Stop terminates the current work routine.
