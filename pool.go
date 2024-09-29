@@ -28,8 +28,15 @@ type WorkerPool struct {
 	cancel  context.CancelFunc
 }
 
-// NewWorkerPool creates a new instance of WorkerPool.
-func NewWorkerPool(ctx context.Context) WorkerPoolManager {
+// NewWorkerPool Creates a new instance of WorkerPool.
+func NewWorkerPool() WorkerPoolManager {
+	return &WorkerPool{
+		workers: make(map[string]WorkerManager),
+	}
+}
+
+// NewWorkerPoolWithContext Creates a new instance of WorkerPool with context.
+func NewWorkerPoolWithContext(ctx context.Context) WorkerPoolManager {
 	wp := &WorkerPool{
 		workers: make(map[string]WorkerManager),
 	}
