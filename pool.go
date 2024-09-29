@@ -11,8 +11,9 @@ import (
 type WorkerPoolManager interface {
 	Start(name string, handle func(ctx context.Context) error, interval time.Duration)
 	StartOnce(name string, handle func(ctx context.Context) error)
-	StartOnceWithVersion(name string, version string, handle func(ctx context.Context) error)
-	StartOnceWithVersionAndDelay(name string, version string, handle func(ctx context.Context) error, delay time.Duration)
+	StartOnceWithDelay(name string, handle func(ctx context.Context) error, delay time.Duration)
+	StartOnceWithVersion(name, version string, handle func(ctx context.Context) error)
+	StartOnceWithVersionAndDelay(name, version string, handle func(ctx context.Context) error, delay time.Duration)
 	Stop(name string)
 	StopAll()
 	WatchErrors(handler func(error))
@@ -90,6 +91,18 @@ func (wp *WorkerPool) StartOnce(name string, handle func(ctx context.Context) er
 	worker.StartOnce(handle)
 }
 
+// StartOnceWithDelay starts a new worker task that executes once after a specified delay.
+func (wp *WorkerPool) StartOnceWithDelay(name string, handle func(ctx context.Context) error, delay time.Duration) {
+	worker, exists := wp.getWorker(name)
+	if exists {
+		worker.ExtendStartOnceWithDelay(delay)
+		return
+	}
+
+	worker = wp.newWorker(name, NewWorkerTask)
+	worker.StartOnceWithDelay(handle, delay)
+}
+
 // StartOnceWithVersion starts or restarts a worker task with the specified name and version.
 // If a task with the same name but a different version exists, it restarts it.
 // If the task does not exist or the version is different, it creates and starts a new task.
@@ -104,8 +117,7 @@ func (wp *WorkerPool) StartOnceWithVersion(name string, version string, handle f
 	worker.StartOnce(handle)
 }
 
-//	StartOnceWithVersionAndDelay starts a task with a specific version and delay if it does not already exist.
-//
+// StartOnceWithVersionAndDelay starts a task with a specific version and delay if it does not already exist.
 // If the task already exists and the version matches, it extends the start delay of the existing task.
 // Otherwise, it creates a new worker for the task and starts it with the specified delay.
 func (wp *WorkerPool) StartOnceWithVersionAndDelay(name string, version string, handle func(ctx context.Context) error, delay time.Duration) {
