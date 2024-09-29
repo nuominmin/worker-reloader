@@ -192,14 +192,25 @@ func (wt *WorkerTask) ExtendStartOnceWithDelay(delay time.Duration) {
 	}
 }
 
-// Stop terminates the current work routine.
+// Stop terminates the current work routine and stops any running timer for delayed tasks.
 func (wt *WorkerTask) Stop() {
 	go func() {
 		wt.mutex.Lock()
 		defer wt.mutex.Unlock()
+
+		// Cancel any active timer to prevent future execution of delayed tasks.
+		if wt.timer != nil {
+			if !wt.timer.Stop() {
+				// If the timer has been triggered but not yet executed, you can try to clean it
+				<-wt.timer.C
+			}
+			wt.timer = nil
+		}
+
+		// Cancel the context to stop any ongoing task.
 		if wt.cancel != nil {
 			wt.cancel()
-			wt.wg.Wait() // Ensure the routine has stopped
+			wt.wg.Wait() // Ensure the task has fully stopped.
 		}
 	}()
 }
