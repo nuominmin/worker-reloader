@@ -26,7 +26,6 @@ type WorkerPool struct {
 	mu      sync.Mutex
 	ctx     context.Context
 	cancel  context.CancelFunc
-	once    sync.Once
 }
 
 // NewWorkerPool creates a new instance of WorkerPool.
