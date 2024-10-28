@@ -2,7 +2,6 @@ package workerreloader
 
 import (
 	"context"
-	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -114,7 +113,7 @@ func (wt *WorkerTask) Start(handle func(ctx context.Context) error, interval tim
 
 			select {
 			case <-wt.ctx.Done():
-				log.Printf("Worker task stopped, name: %s\n", wt.name)
+				logInfo("Worker task stopped, name: %s\n", wt.name)
 				return
 			case <-time.After(time.Until(nextTickTime)):
 				// Wait until the next tick time
@@ -159,10 +158,10 @@ func (wt *WorkerTask) StartOnce(handle func(ctx context.Context) error) {
 
 		select {
 		case <-wt.ctx.Done():
-			log.Printf("One-time worker task was canceled during execution, name: %s\n", wt.name)
+			logInfo("One-time worker task was canceled during execution, name: %s\n", wt.name)
 			<-done
 		case <-done:
-			log.Printf("One-time worker task completed successfully, name: %s\n", wt.name)
+			logInfo("One-time worker task completed successfully, name: %s\n", wt.name)
 		}
 	}()
 
@@ -192,7 +191,7 @@ func (wt *WorkerTask) ExtendStartOnceWithDelay(delay time.Duration) {
 	wt.mutex.Lock()
 	defer wt.mutex.Unlock()
 
-	// 如果定时器存在且任务还未运行，则取消定时器并重新设置
+	// If the timer exists and the task has not yet run, cancel the timer and reset it
 	if wt.timer != nil && atomic.LoadInt32(&wt.running) == 0 {
 		wt.timer.Stop()
 		wt.timer.Reset(delay)

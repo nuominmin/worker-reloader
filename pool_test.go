@@ -16,7 +16,7 @@ func TestWorker(t *testing.T) {
 		return errors.New("xxxx")
 	}, 1*time.Second)
 
-	// 模拟并发调用Start
+	// Simulate a concurrent call to Start
 	for i := 0; i < 5; i++ {
 		go func(n int) {
 			workerPool.Start("once", func(ctx context.Context) error {
@@ -31,10 +31,10 @@ func TestWorker(t *testing.T) {
 		fmt.Println("error:", err)
 	})
 
-	// 等待足够长的时间来观察协程的启动和停止
+	// Wait long enough to watch the coroutine start and stop
 	time.Sleep(300 * time.Second)
 
-	// 最后，确保停止worker
+	// Finally, make sure to stop the worker
 	workerPool.StopAll()
 	fmt.Println("All workers stopped")
 }
