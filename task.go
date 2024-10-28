@@ -132,7 +132,6 @@ func (wt *WorkerTask) StartOnce(handle func(ctx context.Context) error) {
 	if wt.cancel != nil {
 		wt.cancel()
 		wt.wg.Wait() // Wait for the existing routine to stop
-		log.Printf("Existing worker task stopped before starting a new one-time task, name: %s\n", wt.name)
 	}
 
 	wt.ctx, wt.cancel = context.WithCancel(context.Background())
@@ -140,22 +139,31 @@ func (wt *WorkerTask) StartOnce(handle func(ctx context.Context) error) {
 	// Buffer size of 1 to prevent blocking when sending errors
 	wt.errChan = make(chan error, 1)
 	atomic.StoreInt32(&wt.running, 1) // Set the task to the running state
-
 	wt.wg.Add(1)
+
 	go func() {
 		defer wt.wg.Done()
 		defer close(wt.errChan)
 		defer atomic.StoreInt32(&wt.running, 0)
 
-		// Execute task once
-		if err := handle(wt.ctx); err != nil {
-			select {
-			case wt.errChan <- err:
-			default:
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			if err := handle(wt.ctx); err != nil {
+				select {
+				case wt.errChan <- err:
+				default:
+				}
 			}
-		}
+		}()
 
-		log.Printf("One-time worker task completed successfully, name: %s\n", wt.name)
+		select {
+		case <-wt.ctx.Done():
+			log.Printf("One-time worker task was canceled during execution, name: %s\n", wt.name)
+			<-done
+		case <-done:
+			log.Printf("One-time worker task completed successfully, name: %s\n", wt.name)
+		}
 	}()
 
 }

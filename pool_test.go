@@ -9,7 +9,7 @@ import (
 )
 
 func TestWorker(t *testing.T) {
-	workerPool := NewWorkerPool(context.Background())
+	workerPool := NewWorkerPool()
 
 	workerPool.Start("hello", func(ctx context.Context) error {
 		fmt.Println("hello world")
@@ -41,7 +41,7 @@ func TestWorker(t *testing.T) {
 
 func TestWorkerPool_StopAllOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	pool := NewWorkerPool(ctx)
+	pool := NewWorkerPoolWithContext(ctx)
 
 	pool.Start("testWorker", func(ctx context.Context) error {
 		fmt.Println("testWorker start")
@@ -66,6 +66,27 @@ func TestWorkerTask_StartOnceWithDelay(t *testing.T) {
 	}, 60*time.Second)
 
 	w.ExtendStartOnceWithDelay(1 * time.Second)
+
+	time.Sleep(1000 * time.Second)
+}
+
+// TestWorkerTask_StartOnce .
+func TestWorkerTask_StartOnce(t *testing.T) {
+	fmt.Println(time.Now())
+	pool := NewWorkerPool()
+	for i := 0; i < 5; i++ {
+		pool.StartOnce("xxxxxxxxx", func(ctx context.Context) error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(5 * time.Second):
+				fmt.Println("ss start")
+				return nil
+			}
+		})
+
+		time.Sleep(1 * time.Second)
+	}
 
 	time.Sleep(1000 * time.Second)
 }
